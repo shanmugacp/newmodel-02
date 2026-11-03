@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Custom Marker AR View</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <!-- A-Frame + AR.js -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.min.js"></script>
+    <!-- Touch Gestures -->
+    <script src="https://cdn.jsdelivr.net/npm/aframe-super-hands-component@4.0.5/dist/aframe-super-hands.min.js"></script>
+    <style>
+      body { margin: 0; overflow: hidden; background: black; }
+      #welcome {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: black;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: sans-serif;
+        flex-direction: column;
+        z-index: 999;
+        text-align: center;
+        padding: 20px;
+      }
+      #controls {
+        position: fixed;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.6);
+        padding: 10px;
+        border-radius: 10px;
+        display: flex;
+        gap: 5px;
+        z-index: 999;
+      }
+      #footer-label {
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        background: rgba(0,0,0,0.4); /* semi-transparent */
+        color: white;
+        text-align: center;
+        font-family: sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 6px 0;
+        z-index: 1000;
+        pointer-events: none; /* won't block touches */
+        opacity: 0;
+        animation: fadeIn 2s ease forwards;
+        animation-delay: 1s; /* fade in after AR starts */
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      button {
+        background: white;
+        border: none;
+        border-radius: 5px;
+        padding: 8px 12px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      button:active {
+        background: #ccc;
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- Welcome Screen -->
+    <div id="welcome">
+      <h2>Welcome to AR View - Shanmuga The Engineer</h2>
+      <p>Point your camera at the marker to see the model.</p>
+      <button onclick="startAR()">Start</button>
+    </div>
+
+    <!-- AR Scene -->
+    <a-scene
+      embedded
+      vr-mode-ui="enabled: false"
+      arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono; maxDetectionRate: 30;"
+      renderer="logarithmicDepthBuffer: true; antialias: true;"
+    >
+      <a-assets>
+        <a-asset-item id="myModel" src="model.glb"></a-asset-item>
+      </a-assets>
+
+      <!-- Marker with Smoothing -->
+      <a-marker type="pattern" url="marker.patt" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="5">
+        <a-entity id="modelEntity"
+                  gltf-model="#myModel"
+                  scale="0.2 0.2 0.2"
+                  position="0 0 0"
+                  rotation="0 180 0"
+                  gesture-handler
+                  ></a-entity>
+      </a-marker>
+
+      <a-entity camera></a-entity>
+    </a-scene>
+
+    <!-- UI Controls -->
+    <div id="controls" style="display:none;">
+      <button onclick="rotateModel(-10)">⟲</button>
+      <button onclick="rotateModel(10)">⟳</button>
+      <button onclick="scaleModel(0.05)">＋</button>
+      <button onclick="scaleModel(-0.05)">－</button>
+    </div>
+
+    <!-- Always-on-top footer label -->
+    <div id="footer-label">Shanmuga The Engineer (bottom) AR view port</div>
+
+    <script>
+      const welcome = document.getElementById('welcome');
+      const controls = document.getElementById('controls');
+      const footerLabel = document.getElementById('footer-label');
+      const model = document.getElementById('modelEntity');
+
+      // Only allow mobile/tablet
+      function isMobile() {
+        return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      }
+
+      if (!isMobile()) {
+        document.body.innerHTML = "<h2 style='color:white;text-align:center;margin-top:40vh'>Please open on a mobile or tablet device.</h2>";
+      }
+
+      function startAR() {
+        welcome.style.display = 'none';
+        controls.style.display = 'flex';
+        footerLabel.style.opacity = "1"; // trigger fade-in
+      }
+
+      function rotateModel(deg) {
+        let rot = model.getAttribute('rotation');
+        rot.y += deg;
+        model.setAttribute('rotation', rot);
+      }
+
+      function scaleModel(amount) {
+        let scale = model.getAttribute('scale');
+        scale.x += amount;
+        scale.y += amount;
+        scale.z += amount;
+        if (scale.x < 0.05) scale = {x:0.05, y:0.05, z:0.05}; // min limit
+        model.setAttribute('scale', scale);
+      }
+
+      // Screen recording restriction (best effort)
+      if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        navigator.mediaDevices.getDisplayMedia = async () => {
+          alert("⚠️ Screen recording is restricted in this AR experience.");
+          throw new Error("Screen recording disabled");
+        };
+      }
+
+      document.addEventListener("keyup", function(e) {
+        if ((e.ctrlKey && e.key === "p") || (e.key === "PrintScreen")) {
+          alert("⚠️ Screenshots are restricted.");
+        }
+      });
+    </script>
+
+    <!-- Gesture Handler Component -->
+    <script>
+      AFRAME.registerComponent('gesture-handler', {
+        init: function () {
+          let el = this.el;
+          let scaleStart = null;
+          let rotateStart = null;
+
+          this.el.sceneEl.canvas.addEventListener('touchstart', function (e) {
+            if (e.touches.length === 2) {
+              scaleStart = getDistance(e.touches);
+            }
+            if (e.touches.length === 1) {
+              rotateStart = e.touches[0].clientX;
+            }
+          });
+
+          this.el.sceneEl.canvas.addEventListener('touchmove', function (e) {
+            if (e.touches.length === 2 && scaleStart) {
+              let scaleCurrent = getDistance(e.touches);
+              let factor = scaleCurrent / scaleStart;
+              let s = el.getAttribute('scale');
+              el.setAttribute('scale', {
+                x: Math.max(0.05, s.x * factor),
+                y: Math.max(0.05, s.y * factor),
+                z: Math.max(0.05, s.z * factor)
+              });
+              scaleStart = scaleCurrent;
+            }
+            if (e.touches.length === 1 && rotateStart !== null) {
+              let delta = e.touches[0].clientX - rotateStart;
+              let r = el.getAttribute('rotation');
+              el.setAttribute('rotation', {x: r.x, y: r.y + delta * 0.5, z: r.z});
+              rotateStart = e.touches[0].clientX;
+            }
+          });
+
+          function getDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
